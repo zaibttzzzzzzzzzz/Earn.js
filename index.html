@@ -1,0 +1,139 @@
+<?php
+session_start();
+$conn = mysqli_connect("localhost", "root", "", "pak_earn_db");
+
+// WhatsApp Alert Function
+function sendWhatsApp($msg) {
+    $url = "https://api.twilio.com/.../messages?to=+923438220191&body=".urlencode($msg);
+    file_get_contents($url);
+}
+
+// Form Handle Karne Ka Code
+if($_SERVER['REQUEST_METHOD'] == 'POST') {
+    
+    // Registration
+    if(isset($_POST['register'])) {
+        $email = mysqli_real_escape_string($conn, $_POST['email']);
+        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        
+        $check = mysqli_query($conn, "SELECT * FROM users WHERE email='$email'");
+        if(mysqli_num_rows($check) > 0) {
+            echo "<script>alert('Ye email pehle se hai! Naya banayein');</script>";
+        } else {
+            mysqli_query($conn, "INSERT INTO users (email, password) VALUES ('$email', '$password')");
+            echo "<script>alert('Registration kamyaab! Login karein');</script>";
+        }
+    }
+    
+    // Login
+    if(isset($_POST['login'])) {
+        $email = mysqli_real_escape_string($conn, $_POST['email']);
+        $password = $_POST['password'];
+        
+        $user = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM users WHERE email='$email'"));
+        if(password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+        } else {
+            echo "<script>alert('Galat email/password!');</script>";
+        }
+    }
+    
+    // Task Complete
+    if(isset($_POST['task'])) {
+        $user_id = $_SESSION['user_id'];
+        $amount = 10; // Har task ki qeemat
+        
+        mysqli_query($conn, "UPDATE users SET balance = balance + $amount WHERE id=$user_id");
+        echo "<script>alert('+10 PKR! Balance update ho gaya');</script>";
+    }
+    
+    // Withdraw
+    if(isset($_POST['withdraw'])) {
+        $user_id = $_SESSION['user_id'];
+        $amount = $_POST['amount'];
+        $method = $_POST['method'];
+        $account = $_POST['account'];
+        
+        $user = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM users WHERE id=$user_id"));
+        if($user['balance'] >= $amount && $amount >=50) {
+            mysqli_query($conn, "UPDATE users SET balance = balance - $amount WHERE id=$user_id");
+            $msg = "Withdraw Request:\nAmount: $amount PKR\nMethod: $method\nAccount: $account";
+            sendWhatsApp($msg);
+            echo "<script>alert('Request bhej di! 24 ghante mein paise milenge');</script>";
+        } else {
+            echo "<script>alert('Paisay nahi hain ya kam amount!');</script>";
+        }
+    }
+}
+
+// Logout
+if(isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: index.php");
+}
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pak Earn PKR</title>
+    <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 20px; }
+        .box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px #ddd; margin-bottom: 20px; }
+        button { background: green; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        input, select { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+<?php if(isset($_SESSION['user_id'])) : ?>
+    <!-- Dashboard (Logged In Users) -->
+    <?php 
+    $user_id = $_SESSION['user_id'];
+    $user = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM users WHERE id=$user_id")); 
+    ?>
+    
+    <div class="box">
+        <h2>Welcome, <?php echo $user['email']; ?>!</h2>
+        <p>Balance: <?php echo $user['balance']; ?> PKR</p>
+        <a href="?logout=1"><button>Logout</button></a>
+    </div>
+
+    <!-- Tasks -->
+    <div class="box">
+        <h3>Tasks</h3>
+        <form method="POST">
+            <button type="submit" name="task">YouTube Video Like Karen (+10 PKR)</button>
+        </form>
+    </div>
+
+    <!-- Withdraw Form -->
+    <div class="box">
+        <h3>Withdraw Paisay</h3>
+        <form method="POST">
+            <select name="method" required>
+                <option value="">Payment Method Chunen</option>
+                <option value="Easypaisa">Easypaisa</option>
+                <option value="JazzCash">JazzCash</option>
+            </select>
+            <input type="number" name="amount" placeholder="Amount (50+)" min="50" required>
+            <input type="text" name="account" placeholder="Account Number" required>
+            <button type="submit" name="withdraw">Withdraw Karo</button>
+        </form>
+    </div>
+
+<?php else : ?>
+    <!-- Login/Register Form (Guests) -->
+    <div class="box">
+        <h2>Pak Earn PKR</h2>
+        <form method="POST">
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" name="register">Register</button>
+            <button type="submit" name="login">Login</button>
+        </form>
+    </div>
+<?php endif; ?>
+
+</body>
+</html>
